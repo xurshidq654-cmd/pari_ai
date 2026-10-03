@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Nova AI</title>
+<style>
+:root{--bg:#02030a;--fg:#eef2ff;--mut:#8b93b5;--glass:rgba(12,14,30,.55);--line:rgba(160,180,255,.18);--ac:#6ee7b7;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+*{box-sizing:border-box}html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--fg);font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;overflow:hidden}
+canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+.wrap{position:relative;z-index:1;height:100%;display:flex;flex-direction:column;align-items:center;padding:16px;pointer-events:none}
+.wrap>*{pointer-events:auto}
+header{width:100%;max-width:900px;display:flex;align-items:center;gap:8px;font-size:14px;color:var(--mut)}
+header b{color:var(--fg);font-weight:600;letter-spacing:.04em}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--ac);box-shadow:0 0 12px var(--ac)}
+.hero{margin-top:3vh;text-align:center;transition:opacity .5s,transform .5s;pointer-events:none!important}
+.hero h1{font-weight:400;font-size:clamp(28px,5vw,52px);line-height:1.1;margin:0;letter-spacing:-.02em;text-shadow:0 0 30px rgba(0,0,0,.6)}
+.hero p{color:var(--mut);margin:10px 0 0;font-size:14px}
+.hero.off{opacity:0;transform:translateY(-12px)}
+.chat{margin-top:auto;width:100%;max-width:720px;display:flex;flex-direction:column;gap:10px;min-height:0}
+#log{overflow-y:auto;display:flex;flex-direction:column;gap:10px;max-height:46vh;padding:2px;scrollbar-width:none}
+#log::-webkit-scrollbar{display:none}
+.m{max-width:86%;padding:10px 14px;border-radius:16px;font-size:15px;line-height:1.5;white-space:pre-wrap;word-wrap:break-word;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border:1px solid var(--line);animation:in .35s ease}
+.m.u{align-self:flex-end;background:linear-gradient(135deg,rgba(139,92,246,.45),rgba(59,130,246,.35))}
+.m.a{align-self:flex-start;background:var(--glass)}
+@keyframes in{from{opacity:0;transform:translateY(8px)}}
+.bar{display:flex;gap:8px;padding:8px;border-radius:18px;background:var(--glass);border:1px solid var(--line);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px)}
+textarea{flex:1;resize:none;background:none;border:0;outline:0;color:var(--fg);font:inherit;font-size:15px;padding:8px 10px;max-height:120px}
+textarea::placeholder{color:var(--mut)}
+button{border:0;border-radius:12px;padding:0 18px;font:inherit;font-weight:600;color:#04120c;background:linear-gradient(135deg,var(--ac),#60a5fa);cursor:pointer;transition:transform .15s,opacity .2s}
+button:hover{transform:scale(1.04)}button:disabled{opacity:.4;cursor:default;transform:none}
+.hint{text-align:center;font-size:12px;color:var(--mut);margin:2px 0 6px}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="wrap">
+  <header><span class="dot"></span><b>NOVA AI</b></header>
+  <div class="hero" id="hero"><h1>Savol bering,<br>javob kuzating</h1><p>Zarrachalar sizning harakatingizni his qiladi</p></div>
+  <div class="chat">
+    <div id="log"></div>
+    <div class="bar"><textarea id="in" rows="1" placeholder="Xabar yozing..."></textarea><button id="go">Yuborish</button></div>
+    <div class="hint">Enter — yuborish · Shift+Enter — yangi qator</div>
+  </div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+/* ===== WebGL zarrachalar (three.js, GPU shader) ===== */
+const mobile=matchMedia('(max-width:700px)').matches;
+const N=mobile?70000:180000;
+const renderer=new THREE.WebGLRenderer({canvas:document.getElementById('c'),antialias:false,powerPreference:'high-performance'});
+const DPR=Math.min(devicePixelRatio||1,2);
+renderer.setPixelRatio(DPR);renderer.setClearColor(0x02030a,1);
+const scene=new THREE.Scene(),cam=new THREE.PerspectiveCamera(50,1,1,4000);cam.position.z=620;
+
+const gauss=()=>(Math.random()+Math.random()+Math.random()-1.5)/1.5;
+const G=new Float32Array(N*3),S=new Float32Array(N*3),R=new Float32Array(N*4);
+const bands=[100,150,205,265];
+for(let i=0;i<N;i++){
+  const r=Math.random();let x,y,z,col=Math.random();
+  const dust=r<.1;
+  if(dust){x=(Math.random()-.5)*2200;y=(Math.random()-.5)*1400;z=(Math.random()-.5)*900}
+  else if(r<.22){const a=Math.random()*6.283,d=Math.abs(gauss())*55;x=d*Math.cos(a);z=d*Math.sin(a);y=gauss()*10;col=.35+Math.random()*.4}
+  else if(r<.45){ // spiral qo'llar
+    const t=Math.random(),arm=i%2,a=t*5.5+arm*3.1416,d=40+t*250*(1+gauss()*.06);
+    x=d*Math.cos(a);z=d*Math.sin(a);y=gauss()*(4+t*10);col=.5+t*.5}
+  else{const b=i%4,d=bands[b]*(1+gauss()*.045),a=Math.random()*6.283;x=d*Math.cos(a);z=d*Math.sin(a);y=gauss()*5;col=b*.22+Math.random()*.15}
+  G[i*3]=x;G[i*3+1]=y;G[i*3+2]=z;
+  const t=Math.acos(1-2*(i+.5)/N),f=i*2.399963,rr=175*(1+.1*Math.sin(t*5+f*2)+gauss()*.012);
+  S[i*3]=rr*Math.sin(t)*Math.cos(f);S[i*3+1]=rr*Math.cos(t);S[i*3+2]=rr*Math.sin(t)*Math.sin(f);
+  R[i*4]=Math.random();R[i*4+1]=Math.random();R[i*4+2]=Math.min(col,1);R[i*4+3]=dust?1:0;
+}
+const geo=new THREE.BufferGeometry();
+geo.setAttribute('position',new THREE.BufferAttribute(G,3));
+geo.setAttribute('aS',new THREE.BufferAttribute(S,3));
+geo.setAttribute('aR',new THREE.BufferAttribute(R,4));
+const U={uT:{value:0},uM:{value:0},uTilt:{value:1.05},uDpr:{value:DPR},uMouse:{value:new THREE.Vector2(9999,9999)}};
+const mat=new THREE.ShaderMaterial({uniforms:U,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,
+vertexShader:`
+uniform float uT,uM,uTilt,uDpr;uniform vec2 uMouse;
+attribute vec3 aS;attribute vec4 aR;varying vec3 vC;varying float vA;
+void main(){
+ float dust=step(.5,aR.w);
+ vec3 q=mix(position,aS,uM*(1.-dust));
+ q*=1.+(1.-dust)*uM*.06*sin(uT*4.+length(q)*.02);
+ float a=uT*.22,ca=cos(a),sa=sin(a);
+ vec3 r=vec3(q.x*ca-q.z*sa,q.y,q.x*sa+q.z*ca);
+ float ct=cos(uTilt),st=sin(uTilt);
+ r=vec3(r.x,r.y*ct-r.z*st,r.y*st+r.z*ct);
+ vec3 d3=q+vec3(sin(uT*.4+aR.y*6.28)*35.,cos(uT*.3+aR.y*6.28)*35.,0.);
+ q=mix(r,d3,dust);
+ vec2 d=q.xy-uMouse;float l=length(d);
+ q.xy+=normalize(d+1e-4)*smoothstep(150.,0.,l)*80.;
+ vec4 mv=modelViewMatrix*vec4(q,1.);gl_Position=projectionMatrix*mv;
+ gl_PointSize=(aR.x*1.5+.7)*uDpr*(430./-mv.z)*mix(1.,.6,dust);
+ vec3 g=vec3(.2,.95,.65),b=vec3(.4,.55,1.),p=vec3(.7,.4,1.);
+ float s=aR.z;vC=s<.45?mix(g,b,s/.45):mix(b,p,(s-.45)/.55);
+ vC=mix(vC,vec3(.8,.88,1.),dust);
+ vA=mix(.45+.5*aR.x,.3,dust)*(1.+uM*.15);
+}`,
+fragmentShader:`
+varying vec3 vC;varying float vA;
+void main(){float d=length(gl_PointCoord-.5)*2.;if(d>1.)discard;
+ float k=pow(1.-d,2.2);gl_FragColor=vec4(vC*(.6+k*.9),k*vA);}`});
+const pts=new THREE.Points(geo,mat);pts.frustumCulled=false;scene.add(pts);
+
+let sc=1,Y=0;
+function resize(){const w=innerWidth,h=innerHeight;renderer.setSize(w,h,false);cam.aspect=w/h;cam.updateProjectionMatrix();
+ sc=Math.min(1.3,Math.max(.5,Math.min(w/760,h/600)));pts.scale.setScalar(sc);
+ Y=cam.position.z*Math.tan(.4363)*(w<700?.42:.3);pts.position.y=Y}
+resize();addEventListener('resize',resize);
+const ndc={x:9,y:9};
+addEventListener('pointermove',e=>{ndc.x=e.clientX/innerWidth*2-1;ndc.y=-(e.clientY/innerHeight*2-1)});
+addEventListener('pointerleave',()=>{ndc.x=ndc.y=9});
+let think=0,thinkT=0,clock=new THREE.Clock();
+(function loop(){
+ const t=clock.getElapsedTime();U.uT.value=t;
+ think+=(thinkT-think)*.04;U.uM.value=think;
+ U.uTilt.value+=((1.05-think*.75)-U.uTilt.value)*.05;
+ const hh=Math.tan(.4363)*cam.position.z;
+ U.uMouse.value.set((ndc.x*hh*cam.aspect)/sc,(ndc.y*hh-Y)/sc);
+ cam.position.x+=((ndc.x>5?0:ndc.x*30)-cam.position.x)*.03;cam.lookAt(0,0,0);
+ renderer.render(scene,cam);requestAnimationFrame(loop)})();
+
+/* ===== Chat ===== */
+const $=id=>document.getElementById(id),log=$('log'),inp=$('in'),go=$('go'),hero=$('hero');
+const SYS="Sen Nova AI — do'stona, qisqa va aniq javob beradigan suhbatdosh yordamchisan. Foydalanuvchi qaysi tilda yozsa, o'sha tilda javob ber (asosan o'zbek tilida). Javobni oddiy matn ko'rinishida yoz, markdown belgilarsiz.";
+const hist=[];let sample=null,busy=false;
+(async()=>{try{if(window.claude)sample=await claude.use('sample')}catch(e){}})();
+function add(t,c){const d=document.createElement('div');d.className='m '+c;d.textContent=t;log.appendChild(d);log.scrollTop=log.scrollHeight;return d}
+inp.addEventListener('input',()=>{inp.style.height='auto';inp.style.height=Math.min(inp.scrollHeight,120)+'px'});
+inp.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}});
+go.onclick=send;
+async function reveal(el,text){thinkT=.55;for(let i=0;i<=text.length;i+=3){el.textContent=text.slice(0,i);log.scrollTop=log.scrollHeight;await new Promise(r=>setTimeout(r,14))}el.textContent=text}
+async function ask(){
+ if(sample){
+  const turns=hist.map((h,i)=>i===0?{role:'user',content:SYS+"\n\n"+h.content}:h);
+  return (await sample(turns,{cache:false})).text;
+ }
+ const r=await fetch('/.netlify/functions/chat',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({messages:hist})});
+ const d=await r.json();if(!r.ok)throw new Error(d.error||'Xato');return d.reply;
+}
+async function send(){
+ const t=inp.value.trim();if(!t||busy)return;
+ inp.value='';inp.style.height='auto';hero.classList.add('off');
+ add(t,'u');hist.push({role:'user',content:t});
+ const b=add('…','a');busy=true;go.disabled=true;thinkT=1;
+ try{const text=await ask();await reveal(b,text);hist.push({role:'assistant',content:text})}
+ catch(e){hist.pop();b.textContent="Hozir javob berib bo'lmadi. Birozdan keyin qayta urinib ko'ring."}
+ busy=false;go.disabled=false;thinkT=0;inp.focus();
+}
+</script>
+</body>
+</html>
